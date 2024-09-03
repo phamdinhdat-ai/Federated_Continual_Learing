@@ -1,0 +1,16 @@
+classes = {
+
+"Down"  :  0
+"DownLEFT"  :  1
+"DownRIGHT"  :   2
+"Left"  : 3
+"LeftDOWN"  :  4
+"LeftUP"  : 5
+"Right"   : 6
+"RightDOWN"  : 7
+"RightUP"  :    8
+"Up"  : 9
+"UpLEFT"  : 10
+"UpRIGHT" :  11
+
+}
