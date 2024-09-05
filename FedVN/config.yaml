@@ -1,0 +1,32 @@
+seed: 1024 
+model_name: TimeTransformer
+method: FedFTG
+dataset_name: Breathing 
+exp_name: Federated
+epoch: 10
+save: True
+print_seq: 100
+n_clients: 10 
+sq_len: 100
+overlap: 0.4
+n_classes: 12
+dir_alpha: 0.3 
+lognorm_std: 0.6
+rule: Dirichlet
+alpha: 0.6 
+sgm: 0
+localE: 5
+comm_amount: 1000 
+active_frac: 1.0
+batch_size: 32 
+n_minibatch: 32
+optimizer: SGD
+lr: 0.01 #client learning rate
+momentum: 0.0 
+weight_decay: 0.001 #local (client) weight decay factor
+lr_decay: 0.998  #local (client) learning rate decay factor
+coef_alpha: 0.01
+mu: 0.0001 
+tau: 1 
+sch_step: 1
+sch_gamma: 1.0 #The learning rate scheduler gamma
