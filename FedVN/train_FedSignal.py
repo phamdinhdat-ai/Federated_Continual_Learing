@@ -68,7 +68,7 @@ tst_x = torch.tensor(tst_x.mean(axis=2))
 #### initalize model ### 
 model.to(device=device, dtype=torch.float64)
 init_model  = copy.deepcopy(model)
-init_model.to(device=device, dtype=torch.float64)
+init_model.to(device=device)
 
 ######################### training model 
 # client_model = train_model(model=init_model,

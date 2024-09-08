@@ -2,6 +2,7 @@ import copy
 import os 
 from pathlib import Path
 import numpy as np
+import json
 
 import torch 
 import torch.nn as nn 
@@ -15,7 +16,7 @@ from utils.util_dataset import NewData
 from .helper_function import get_acc_loss, get_mdl_bn_idx, get_mdl_params, get_mdl_nonbn_idx
 from .helper_function import set_client_from_params
 
-device  = torch.device('cuda: 0' if torch.cuda.is_available() else 'cpu')
+device  = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 
@@ -72,10 +73,16 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
     saved_itr = -1 
     
     writer = SummaryWriter('%sRuns/%s/%s' % (data_path, data_obj.name, suffix))
+    history_comm = dict(com_amount = dict(
+        avg_model_test = [],
+        all_model_test = []
+    ))
+    
     print("Set up Oke !!!! ")
     if not trial:
         
         for i in range(com_amount):
+            history_comm[f"round_{i}"] = dict()
             if os.path.exists('%sModel/%s/%s/%dcom_sel.pt' % (data_path, data_obj.name, suffix, i + 1)):
                 saved_itr = i
                 
@@ -116,7 +123,7 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
                         '%sModel/%s/%s/%dcom_tst_perf_all.npy' % (data_path, data_obj.name, suffix, (i + 1)))
                     clnt_params_list = np.load(
                         '%sModel/%s/%s/%d_clnt_params_list.npy' % (data_path, data_obj.name, suffix, i + 1))
-
+    
     if trial or (not os.path.exists('%sModel/%s/%s/%dcom_sel.pt' % (data_path, data_obj.name, suffix, com_amount))):
         # clnt_models = list(range(n_clnt))
         if saved_itr == -1:
@@ -139,6 +146,8 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
         for i in range(saved_itr + 1, com_amount):
             # Train if doesn't exist
             # Fix randomness
+            history_comm[f"round_{i}"] = dict()
+            
             inc_seed = 0
             while True:
                 np.random.seed(i + rand_seed + inc_seed)
@@ -156,11 +165,11 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
                 print("---------Training Clients %d -----------" % clnt)
                 trn_x = clnt_x[clnt]
                 trn_y = clnt_y[clnt]
-                print(f"Data shape train for client {clnt}: ", trn_x.shape)
-                print(f"Label shape train for client {clnt}: ", trn_y.shape)
+                # print(f"Data shape train for client {clnt}: ", trn_x.shape)
+                # print(f"Label shape train for client {clnt}: ", trn_y.shape)
                 
-                print(f"Label shape test for client {clnt}: ", tst_x.shape)
-                print(f"Label shape test for client {clnt}: ", tst_y.shape)
+                # print(f"Label shape test for client {clnt}: ", tst_x.shape)
+                # print(f"Label shape test for client {clnt}: ", tst_y.shape)
             
                 
                 
@@ -170,7 +179,7 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
                 for param in clnt_models[clnt].parameters():
                     param.requires_grad = True
                     
-                clnt_models[clnt] = train_model(model=clnt_models[clnt],
+                clnt_models[clnt], history = train_model(model=clnt_models[clnt],
                                                 trn_x=trn_x,
                                                 trn_y=trn_y, 
                                                 tst_x=tst_x, 
@@ -185,7 +194,7 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
                                                 sch_step=1)
                 
                 clnt_params_list[clnt] = get_mdl_params([clnt_models[clnt]], n_par=n_par)[0]
-                
+                history_comm[f"round_{i}"][f"Client_{clnt}"] = history
                 
             # set the client with new params
             # # Scale with weights
@@ -204,13 +213,15 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
             print("**** Communication sel %3d, Test Accuracy: %.4f, Loss: %.4f"
                   % (i + 1, acc_tst, loss_tst))
 
+            history_comm["com_amount"]["avg_model_test"].append([loss_tst, acc_tst]) # loss of  selected model in test set
+            
             ###
             loss_tst, acc_tst = get_acc_loss(cent_x, cent_y,
                                              avg_model, data_obj.dataset_name, 0)
             trn_perf_sel[i] = [loss_tst, acc_tst]
             print("**** Communication sel %3d, Cent Accuracy: %.4f, Loss: %.4f"
                   % (i + 1, acc_tst, loss_tst))
-
+            
             ###
             loss_tst, acc_tst = get_acc_loss(tst_x, tst_y,
                                              all_model, data_obj.dataset_name, 0)
@@ -218,6 +229,8 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
 
             print("**** Communication all %3d, Test Accuracy: %.4f, Loss: %.4f"
                   % (i + 1, acc_tst, loss_tst))
+            
+            history_comm["com_amount"]["all_model_test"].append([loss_tst, acc_tst]) # loss and accuracy in all training set
 
             ###
             loss_tst, acc_tst = get_acc_loss(cent_x, cent_y,
@@ -302,9 +315,11 @@ def train_Fed_common(data_obj, act_prob, learning_rate, batch_size, epoch,
                         os.remove('%sModel/%s/%s/%d_clnt_params_list.npy' % (
                             data_path, data_obj.name, suffix, i + 1 - save_period))
 
-
+        
             if ((i + 1) % save_period == 0):
                 fed_mdls_sel[i // save_period] = avg_model
                 fed_mdls_all[i // save_period] = all_model
-                
+    
+    with open(f'Runs/history/history_{data_obj.name}_{batch_size}_{com_amount}_{epoch}_{model_func.__class__.__name__}.json', mode='w') as f: 
+        json.dump(history_comm, f)
     return fed_mdls_sel, trn_perf_sel, tst_perf_sel, fed_mdls_all, trn_perf_all, tst_perf_all
